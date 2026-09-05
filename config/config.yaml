@@ -1,0 +1,11 @@
+ruleSets:
+  - path: "."
+    maxDepth: 2
+    override: false
+
+  - path: "private"
+    override: true
+
+  - path: "private/uploads"
+    maxDepth: 1
+    override: false
