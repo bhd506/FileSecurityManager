@@ -43,7 +43,7 @@ The standalone default is `watchSourceChanges(true)`.
 
 The file-security core deliberately creates mirror services with:
 
-```java
+```
 watchSourceChanges(false)
 ```
 
@@ -51,7 +51,7 @@ This is important: authorization applies to the scanned **version** of a source 
 
 ## Typical standalone use
 
-```java
+```
 MirrorConfig config = MirrorConfig.builder(sourceRoot, mirrorRoot)
         .mode(MirrorMode.ONE_TIME)
         .transferMode(TransferMode.COPY)
