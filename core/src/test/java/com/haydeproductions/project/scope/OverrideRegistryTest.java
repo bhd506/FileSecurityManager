@@ -73,6 +73,60 @@ class OverrideRegistryTest {
         assertFalse(registry.isOverride(addedLater));
     }
 
+
+    @Test
+    void normalizesRegisteredPathsOnConstruction() {
+        Path normalized = root.resolve("private");
+
+        Path nonNormalized = root
+                .resolve("unused")
+                .resolve("..")
+                .resolve("private");
+
+        OverrideRegistry registry =
+                new OverrideRegistry(Set.of(nonNormalized));
+
+        assertTrue(
+                registry.isOverride(normalized)
+        );
+    }
+
+    @Test
+    void normalizesLookupPaths() {
+        Path normalized = root.resolve("private");
+
+        OverrideRegistry registry =
+                new OverrideRegistry(Set.of(normalized));
+
+        Path nonNormalizedLookup = root
+                .resolve("private")
+                .resolve("unused")
+                .resolve("..");
+
+        assertTrue(
+                registry.isOverride(nonNormalizedLookup)
+        );
+    }
+
+    @Test
+    void rejectsNullRegistrySet() {
+        assertThrows(
+                NullPointerException.class,
+                () -> new OverrideRegistry(null)
+        );
+    }
+
+    @Test
+    void rejectsNullLookupPath() {
+        OverrideRegistry registry =
+                new OverrideRegistry(Set.of());
+
+        assertThrows(
+                NullPointerException.class,
+                () -> registry.isOverride(null)
+        );
+    }
+
     @Test
     void logOverridesPrintsEveryRegisteredPath() {
         Path first = root.resolve("first");

@@ -92,13 +92,92 @@ public final class MirrorWatcher implements AutoCloseable {
         }
         pending.clear();
 
+        IOException failure = null;
+
+        // Stop the WatchService first so the watch thread wakes up.
         if (watchService != null) {
-            watchService.close();
+            try {
+                watchService.close();
+            } catch (IOException e) {
+                failure = e;
+            }
         }
+
+        // Wait for the watch thread to actually exit.
+        if (watchThread != null && watchThread != Thread.currentThread()) {
+            try {
+                watchThread.join(5000);
+
+                if (watchThread.isAlive()) {
+                    IOException e =
+                            new IOException("Mirror watch thread did not terminate");
+
+                    if (failure == null) {
+                        failure = e;
+                    } else {
+                        failure.addSuppressed(e);
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+
+                IOException io =
+                        new IOException(
+                                "Interrupted while stopping mirror watcher",
+                                e
+                        );
+
+                if (failure == null) {
+                    failure = io;
+                } else {
+                    failure.addSuppressed(io);
+                }
+            }
+        }
+
+        // Then stop and wait for debounce/reconciliation tasks.
         if (scheduler != null) {
             scheduler.shutdownNow();
+
+            try {
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    IOException e =
+                            new IOException(
+                                    "Mirror debounce scheduler did not terminate"
+                            );
+
+                    if (failure == null) {
+                        failure = e;
+                    } else {
+                        failure.addSuppressed(e);
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+
+                IOException io =
+                        new IOException(
+                                "Interrupted while stopping mirror scheduler",
+                                e
+                        );
+
+                if (failure == null) {
+                    failure = io;
+                } else {
+                    failure.addSuppressed(io);
+                }
+            }
         }
+
         registrations.clear();
+
+        watchService = null;
+        scheduler = null;
+        watchThread = null;
+
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     @Override
