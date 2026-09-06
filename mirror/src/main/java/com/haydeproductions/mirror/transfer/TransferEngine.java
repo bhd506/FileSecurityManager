@@ -52,10 +52,88 @@ public final class TransferEngine {
             MirrorSide destinationSide,
             Path relative
     ) throws IOException {
-        FileFingerprint destination = copy(from, to, destinationSide, relative);
-        Files.delete(from);
-        suppressor.expect(sourceSide, relative, FileFingerprint.absent());
-        return destination;
+        IOException last = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            FileFingerprint destination = copy(
+                    from,
+                    to,
+                    destinationSide,
+                    relative
+            );
+
+            Path stagedSource = from.resolveSibling(
+                    from.getFileName() + ".mirror-move-stage-" + UUID.randomUUID()
+            );
+
+            try {
+                try {
+                    Files.move(from, stagedSource, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException exception) {
+                    Files.move(from, stagedSource);
+                }
+
+                FileFingerprint staged = snapshots.fingerprint(stagedSource);
+                if (!staged.equals(destination)) {
+                    restoreStagedSource(stagedSource, from);
+                    last = new SourceChangedDuringTransferException(from);
+                    continue;
+                }
+
+                Files.delete(stagedSource);
+                suppressor.expect(
+                        sourceSide,
+                        relative,
+                        FileFingerprint.absent()
+                );
+                return destination;
+
+            } catch (SourceChangedDuringTransferException exception) {
+                last = exception;
+            } catch (IOException exception) {
+                if (Files.exists(stagedSource) && !Files.exists(from)) {
+                    try {
+                        restoreStagedSource(stagedSource, from);
+                    } catch (IOException restoreFailure) {
+                        exception.addSuppressed(restoreFailure);
+                    }
+                }
+                throw exception;
+            } finally {
+                // A successful restore or delete leaves nothing here. If both the
+                // original and staged paths exist due to an external race, retain
+                // the staged copy rather than deleting potentially newer data.
+                if (Files.exists(stagedSource) && !Files.exists(from)) {
+                    try {
+                        restoreStagedSource(stagedSource, from);
+                    } catch (IOException ignored) {
+                        // The primary operation will surface the failure path.
+                    }
+                }
+            }
+        }
+
+        throw last == null
+                ? new IOException("Unable to move " + from + " to " + to)
+                : last;
+    }
+
+    private void restoreStagedSource(Path stagedSource, Path source)
+            throws IOException {
+        if (!Files.exists(stagedSource)) {
+            return;
+        }
+        if (Files.exists(source)) {
+            throw new IOException(
+                    "Cannot restore changed source because its original path is occupied: "
+                            + source
+            );
+        }
+        try {
+            Files.move(stagedSource, source, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException exception) {
+            Files.move(stagedSource, source);
+        }
     }
 
     public void delete(
@@ -108,6 +186,16 @@ public final class TransferEngine {
             if (!committed.equals(after)) {
                 throw new IOException("Destination verification failed: " + to);
             }
+
+            // Close the small race between the pre-commit source fingerprint and
+            // committing the destination. If the source changed again, retry and
+            // leave the destination at the newest stable version instead of
+            // reporting a stale transfer as complete.
+            FileFingerprint finalSource = snapshots.fingerprint(from);
+            if (!finalSource.equals(committed)) {
+                throw new SourceChangedDuringTransferException(from);
+            }
+
             suppressor.expect(destinationSide, relative, committed);
             return committed;
         } finally {

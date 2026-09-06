@@ -3,7 +3,6 @@ package com.haydeproductions.project.scope;
 import com.haydeproductions.project.rule.Rule;
 import com.haydeproductions.project.rule.condition.ConditionEvaluationException;
 import com.haydeproductions.project.scan.ScanSession;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -37,7 +36,7 @@ public class RuleSet {
     }
 
     public void applyRule(Path file){
-        System.out.println(file);
+        // Legacy traversal hook retained for compatibility with full-tree tests.
     }
 
     public void applyRules(ScanSession session)
@@ -62,10 +61,9 @@ public class RuleSet {
                 new SimpleFileVisitor<>() {
 
                     @Override
-                    @NotNull
-                    public FileVisitResult preVisitDirectory(
-                            @NotNull Path dir,
-                            @NotNull BasicFileAttributes attrs) {
+                                        public FileVisitResult preVisitDirectory(
+                            Path dir,
+                            BasicFileAttributes attrs) {
 
                         if (!dir.equals(root) && overrideRegistry.isOverride(dir)) {
                             return FileVisitResult.SKIP_SUBTREE;
@@ -75,10 +73,9 @@ public class RuleSet {
                     }
 
                     @Override
-                    @NotNull
-                    public FileVisitResult visitFile(
-                            @NotNull Path file,
-                            @NotNull BasicFileAttributes attrs) {
+                                        public FileVisitResult visitFile(
+                            Path file,
+                            BasicFileAttributes attrs) {
 
                         if (attrs.isRegularFile()) {
                             applyRule(file);

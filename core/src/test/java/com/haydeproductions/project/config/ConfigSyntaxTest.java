@@ -14,7 +14,7 @@ class ConfigSyntaxTest {
     @Test
     void exposesSupportedActions() {
         assertEquals(
-                java.util.Set.of("flag", "quarantine", "delete"),
+                java.util.Set.of("flag", "quarantine", "delete", "allowMirror", "denyMirror"),
                 ConfigSyntax.ACTIONS
         );
     }

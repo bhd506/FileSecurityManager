@@ -28,12 +28,17 @@ public final class Main {
                 ? Path.of(args[3])
                 : Path.of("logs");
 
+        Path mirrorRoot = args.length > 4
+                ? Path.of(args[4])
+                : Path.of("mirror-data");
+
         try (FileSecurityApplication application =
                      FileSecurityApplication.create(
                              configPath,
                              sourceRoot,
                              quarantineRoot,
-                             logRoot
+                             logRoot,
+                             mirrorRoot
                      )) {
 
             Thread shutdownHook = new Thread(
@@ -60,10 +65,12 @@ public final class Main {
                     )
             );
 
-            System.out.println(
-                    "Initial tracked states: "
-                            + application.getStateRegistry().snapshot()
-            );
+            if (!application.getMirrorManager().ids().isEmpty()) {
+                System.out.println(
+                        "Configured mirrors: "
+                                + application.getMirrorManager().ids()
+                );
+            }
 
             try {
                 new CountDownLatch(1).await();

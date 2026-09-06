@@ -15,8 +15,6 @@ import com.haydeproductions.mirror.transfer.TransferEngine;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 public final class MirrorEngine {
     private final MirrorConfig config;
@@ -25,8 +23,10 @@ public final class MirrorEngine {
     private final SnapshotService snapshots;
     private final TransferEngine transfers;
     private final SyncStateStore syncState;
+    private static final int LOCK_STRIPES = 256;
+
     private final OperationSuppressor suppressor;
-    private final ConcurrentMap<Path, Object> locks = new ConcurrentHashMap<>();
+    private final Object[] locks = new Object[LOCK_STRIPES];
 
     public MirrorEngine(
             MirrorConfig config,
@@ -44,6 +44,9 @@ public final class MirrorEngine {
         this.transfers = transfers;
         this.syncState = syncState;
         this.suppressor = suppressor;
+        for (int index = 0; index < locks.length; index++) {
+            locks[index] = new Object();
+        }
     }
 
     public void reconcile(Path relative, MirrorSide triggerSide) throws IOException {
@@ -52,7 +55,7 @@ public final class MirrorEngine {
             return;
         }
 
-        Object lock = locks.computeIfAbsent(normalised, ignored -> new Object());
+        Object lock = locks[Math.floorMod(normalised.hashCode(), locks.length)];
         synchronized (lock) {
             reconcileLocked(normalised, triggerSide);
         }

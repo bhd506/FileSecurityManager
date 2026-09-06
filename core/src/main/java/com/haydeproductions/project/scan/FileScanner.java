@@ -2,6 +2,7 @@ package com.haydeproductions.project.scan;
 
 import com.haydeproductions.project.file.FileFingerprint;
 import com.haydeproductions.project.file.FileFingerprintService;
+import com.haydeproductions.project.mirror.MirrorManager;
 import com.haydeproductions.project.rule.action.ActionExecutionException;
 import com.haydeproductions.project.rule.action.ActionExecutor;
 import com.haydeproductions.project.rule.condition.ConditionEvaluationException;
@@ -22,6 +23,7 @@ public final class FileScanner {
     private final ActionExecutor actionExecutor;
     private final FileStateRegistry stateRegistry;
     private final FileFingerprintService fingerprintService;
+    private final MirrorManager mirrorManager;
 
     public FileScanner(
             ScanCoordinator scanCoordinator,
@@ -32,7 +34,8 @@ public final class FileScanner {
                 scanCoordinator,
                 actionExecutor,
                 stateRegistry,
-                new FileFingerprintService()
+                new FileFingerprintService(),
+                MirrorManager.none()
         );
     }
 
@@ -42,10 +45,27 @@ public final class FileScanner {
             FileStateRegistry stateRegistry,
             FileFingerprintService fingerprintService
     ) {
+        this(
+                scanCoordinator,
+                actionExecutor,
+                stateRegistry,
+                fingerprintService,
+                MirrorManager.none()
+        );
+    }
+
+    public FileScanner(
+            ScanCoordinator scanCoordinator,
+            ActionExecutor actionExecutor,
+            FileStateRegistry stateRegistry,
+            FileFingerprintService fingerprintService,
+            MirrorManager mirrorManager
+    ) {
         this.scanCoordinator = Objects.requireNonNull(scanCoordinator);
         this.actionExecutor = Objects.requireNonNull(actionExecutor);
         this.stateRegistry = Objects.requireNonNull(stateRegistry);
         this.fingerprintService = Objects.requireNonNull(fingerprintService);
+        this.mirrorManager = Objects.requireNonNull(mirrorManager);
     }
 
     public ScanSession scan(Path file)
@@ -56,6 +76,18 @@ public final class FileScanner {
         Path normalizedFile = Objects.requireNonNull(file)
                 .toAbsolutePath()
                 .normalize();
+
+        try {
+            // Authorization is version-scoped. A previously approved version must
+            // stop being an active mirror target before the new version is checked.
+            mirrorManager.revokeAll(normalizedFile);
+        } catch (IOException | RuntimeException exception) {
+            stateRegistry.setState(normalizedFile, FileState.ERROR);
+            throw new FileScanException(
+                    "Failed to revoke stale mirror authorization: " + normalizedFile,
+                    exception
+            );
+        }
 
         stateRegistry.setState(
                 normalizedFile,

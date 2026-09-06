@@ -21,7 +21,10 @@ class ConfigTest {
 
         Config config = new Config(root, registry, List.of(ruleSet));
 
-        assertEquals(root, config.getRoot());
+        assertEquals(
+                root.toAbsolutePath().normalize(),
+                config.getRoot()
+        );
         assertSame(registry, config.getOverrides());
         assertEquals(List.of(ruleSet), config.getRuleSets());
     }

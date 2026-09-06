@@ -30,6 +30,8 @@ public final class MirrorWatcher implements AutoCloseable {
     private final Path sourceRoot;
     private final Path mirrorRoot;
     private final Duration debounce;
+    private final boolean watchSource;
+    private final boolean watchMirror;
     private final Consumer<MirrorEvent> eventHandler;
     private final Consumer<MirrorSide> overflowHandler;
     private final MirrorErrorHandler errorHandler;
@@ -49,12 +51,46 @@ public final class MirrorWatcher implements AutoCloseable {
             Consumer<MirrorSide> overflowHandler,
             MirrorErrorHandler errorHandler
     ) {
-        this.sourceRoot = sourceRoot;
-        this.mirrorRoot = mirrorRoot;
-        this.debounce = debounce;
-        this.eventHandler = eventHandler;
-        this.overflowHandler = overflowHandler;
-        this.errorHandler = errorHandler;
+        this(
+                sourceRoot,
+                mirrorRoot,
+                debounce,
+                true,
+                true,
+                eventHandler,
+                overflowHandler,
+                errorHandler
+        );
+    }
+
+    public MirrorWatcher(
+            Path sourceRoot,
+            Path mirrorRoot,
+            Duration debounce,
+            boolean watchSource,
+            boolean watchMirror,
+            Consumer<MirrorEvent> eventHandler,
+            Consumer<MirrorSide> overflowHandler,
+            MirrorErrorHandler errorHandler
+    ) {
+        this.sourceRoot = Objects.requireNonNull(sourceRoot)
+                .toAbsolutePath()
+                .normalize();
+        this.mirrorRoot = Objects.requireNonNull(mirrorRoot)
+                .toAbsolutePath()
+                .normalize();
+        this.debounce = Objects.requireNonNull(debounce);
+        if (debounce.isNegative()) {
+            throw new IllegalArgumentException("debounce cannot be negative");
+        }
+        if (!watchSource && !watchMirror) {
+            throw new IllegalArgumentException("At least one mirror side must be watched");
+        }
+        this.watchSource = watchSource;
+        this.watchMirror = watchMirror;
+        this.eventHandler = Objects.requireNonNull(eventHandler);
+        this.overflowHandler = Objects.requireNonNull(overflowHandler);
+        this.errorHandler = Objects.requireNonNull(errorHandler);
     }
 
     public synchronized void start() throws IOException {
@@ -62,20 +98,44 @@ public final class MirrorWatcher implements AutoCloseable {
             return;
         }
 
-        watchService = sourceRoot.getFileSystem().newWatchService();
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "mirror-debounce");
-            thread.setDaemon(true);
-            return thread;
-        });
+        WatchService createdWatchService = sourceRoot.getFileSystem().newWatchService();
+        ScheduledExecutorService createdScheduler =
+                Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread thread = new Thread(r, "mirror-debounce");
+                    thread.setDaemon(true);
+                    return thread;
+                });
 
-        registerTree(sourceRoot, MirrorSide.SOURCE);
-        registerTree(mirrorRoot, MirrorSide.MIRROR);
+        watchService = createdWatchService;
+        scheduler = createdScheduler;
 
-        running.set(true);
-        watchThread = new Thread(this::watchLoop, "mirror-watch");
-        watchThread.setDaemon(true);
-        watchThread.start();
+        try {
+            if (watchSource) {
+                registerTree(sourceRoot, MirrorSide.SOURCE);
+            }
+            if (watchMirror) {
+                registerTree(mirrorRoot, MirrorSide.MIRROR);
+            }
+
+            running.set(true);
+            watchThread = new Thread(this::watchLoop, "mirror-watch");
+            watchThread.setDaemon(true);
+            watchThread.start();
+        } catch (IOException | RuntimeException exception) {
+            registrations.clear();
+            pending.clear();
+            createdScheduler.shutdownNow();
+            try {
+                createdWatchService.close();
+            } catch (IOException closeFailure) {
+                exception.addSuppressed(closeFailure);
+            }
+            watchService = null;
+            scheduler = null;
+            watchThread = null;
+            running.set(false);
+            throw exception;
+        }
     }
 
     public boolean isRunning() {
@@ -204,7 +264,7 @@ public final class MirrorWatcher implements AutoCloseable {
                 return;
             } catch (java.nio.file.ClosedWatchServiceException e) {
                 return;
-            } catch (Throwable error) {
+            } catch (RuntimeException error) {
                 errorHandler.onError(error);
             }
         }
@@ -239,22 +299,38 @@ public final class MirrorWatcher implements AutoCloseable {
     }
 
     private void debounce(MirrorEvent event) {
+        if (!running.get()) {
+            return;
+        }
+
         EventKey key = new EventKey(event.side(), event.relativePath());
         ScheduledFuture<?> previous = pending.remove(key);
         if (previous != null) {
             previous.cancel(false);
         }
 
+        ScheduledExecutorService currentScheduler = scheduler;
+        if (currentScheduler == null || currentScheduler.isShutdown()) {
+            return;
+        }
+
         long delayMillis = debounce.toMillis();
-        ScheduledFuture<?> future = scheduler.schedule(() -> {
-            pending.remove(key);
-            try {
-                eventHandler.accept(event);
-            } catch (Throwable error) {
-                errorHandler.onError(error);
-            }
-        }, delayMillis, TimeUnit.MILLISECONDS);
-        pending.put(key, future);
+        try {
+            ScheduledFuture<?> future = currentScheduler.schedule(() -> {
+                pending.remove(key);
+                if (!running.get()) {
+                    return;
+                }
+                try {
+                    eventHandler.accept(event);
+                } catch (RuntimeException error) {
+                    errorHandler.onError(error);
+                }
+            }, delayMillis, TimeUnit.MILLISECONDS);
+            pending.put(key, future);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // Watcher is shutting down.
+        }
     }
 
     private void tryRegisterCreatedDirectory(Path path, MirrorSide side) {

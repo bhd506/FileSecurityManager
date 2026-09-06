@@ -1,5 +1,24 @@
 version: 1
 
+runtime:
+  debounce: 150ms
+  workerThreads: 4
+
+statusApi:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8080
+
+mirrors:
+  - id: backup
+    path: backup
+    mode: sourceToMirror
+    transferMode: copy
+    conflictPolicy: fail
+    debounce: 150ms
+    maxTransferAttempts: 3
+    persistentState: false
+
 ruleSets:
   - path: "."
     override: false
@@ -18,10 +37,16 @@ ruleSets:
               - not:
                   fileSignature:
                     values: [JPEG]
-
           onMatch: [flag, quarantine]
 
       - predefined:
           type: maxFileSize
           max: 10MiB
           onMatch: flag
+
+      - custom:
+          condition:
+            extension:
+              values: [txt]
+          onMatch:
+            - allowMirror: backup

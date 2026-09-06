@@ -10,5 +10,6 @@ public enum LogEventType {
     SCAN_FAILED,
     WATCH_OVERFLOW,
     WATCHER_FAILED,
+    MIRROR_FAILED,
     SOURCE_DELETE_OBSERVED
 }

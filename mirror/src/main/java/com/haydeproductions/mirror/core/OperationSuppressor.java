@@ -39,7 +39,10 @@ public final class OperationSuppressor {
             return false;
         }
         if (value.fingerprint().equals(actual)) {
-            expected.remove(key, value);
+            // A single filesystem operation can emit several CREATE/MODIFY/DELETE
+            // notifications. Keep suppressing the same resulting fingerprint until
+            // the short lifetime expires. Any genuinely different fingerprint below
+            // clears the expectation immediately.
             return true;
         }
         expected.remove(key, value);

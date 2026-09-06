@@ -1,5 +1,6 @@
 package com.haydeproductions.project.rule.action;
 
+import com.haydeproductions.project.mirror.MirrorManager;
 import com.haydeproductions.project.scan.ScanSession;
 import com.haydeproductions.project.scan.ScheduledAction;
 import com.haydeproductions.project.state.FileStateRegistry;
@@ -11,10 +12,18 @@ import java.util.Objects;
 public final class ActionExecutor {
 
     private final FileStateRegistry stateRegistry;
+    private final MirrorManager mirrorManager;
 
     public ActionExecutor(FileStateRegistry stateRegistry) {
-        this.stateRegistry =
-                Objects.requireNonNull(stateRegistry);
+        this(stateRegistry, MirrorManager.none());
+    }
+
+    public ActionExecutor(
+            FileStateRegistry stateRegistry,
+            MirrorManager mirrorManager
+    ) {
+        this.stateRegistry = Objects.requireNonNull(stateRegistry);
+        this.mirrorManager = Objects.requireNonNull(mirrorManager);
     }
 
     public void execute(ScanSession session)
@@ -25,7 +34,8 @@ public final class ActionExecutor {
         ActionContext context =
                 new ActionContext(
                         session.getFile(),
-                        stateRegistry
+                        stateRegistry,
+                        mirrorManager
                 );
 
         List<ScheduledAction> ordered =

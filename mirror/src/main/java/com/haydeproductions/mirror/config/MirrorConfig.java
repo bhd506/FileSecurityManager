@@ -14,6 +14,7 @@ public final class MirrorConfig {
     private final Duration debounce;
     private final int maxTransferAttempts;
     private final Path stateFile;
+    private final boolean watchSourceChanges;
 
     private MirrorConfig(Builder builder) {
         this.sourceRoot = normalise(builder.sourceRoot);
@@ -24,6 +25,7 @@ public final class MirrorConfig {
         this.debounce = builder.debounce;
         this.maxTransferAttempts = builder.maxTransferAttempts;
         this.stateFile = builder.stateFile == null ? null : normalise(builder.stateFile);
+        this.watchSourceChanges = builder.watchSourceChanges;
 
         validate();
     }
@@ -51,6 +53,9 @@ public final class MirrorConfig {
         }
         if (maxTransferAttempts < 1) {
             throw new IllegalArgumentException("maxTransferAttempts must be at least 1");
+        }
+        if (stateFile != null && (stateFile.startsWith(sourceRoot) || stateFile.startsWith(mirrorRoot))) {
+            throw new IllegalArgumentException("State file must be outside source and mirror roots");
         }
     }
 
@@ -86,6 +91,10 @@ public final class MirrorConfig {
         return Optional.ofNullable(stateFile);
     }
 
+    public boolean watchSourceChanges() {
+        return watchSourceChanges;
+    }
+
     public static final class Builder {
         private final Path sourceRoot;
         private final Path mirrorRoot;
@@ -95,6 +104,7 @@ public final class MirrorConfig {
         private Duration debounce = Duration.ofMillis(150);
         private int maxTransferAttempts = 3;
         private Path stateFile;
+        private boolean watchSourceChanges = true;
 
         private Builder(Path sourceRoot, Path mirrorRoot) {
             this.sourceRoot = Objects.requireNonNull(sourceRoot, "sourceRoot");
@@ -128,6 +138,11 @@ public final class MirrorConfig {
 
         public Builder stateFile(Path stateFile) {
             this.stateFile = Objects.requireNonNull(stateFile, "stateFile");
+            return this;
+        }
+
+        public Builder watchSourceChanges(boolean watchSourceChanges) {
+            this.watchSourceChanges = watchSourceChanges;
             return this;
         }
 

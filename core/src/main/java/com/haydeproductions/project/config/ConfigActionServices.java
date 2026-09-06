@@ -5,22 +5,26 @@ import com.haydeproductions.project.quarantine.QuarantineService;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 public final class ConfigActionServices {
 
     private final LogHandler logHandler;
     private final QuarantineService quarantineService;
+    private final Set<String> mirrorIds;
 
     private ConfigActionServices(
             LogHandler logHandler,
-            QuarantineService quarantineService
+            QuarantineService quarantineService,
+            Set<String> mirrorIds
     ) {
         this.logHandler = logHandler;
         this.quarantineService = quarantineService;
+        this.mirrorIds = Set.copyOf(Objects.requireNonNull(mirrorIds));
     }
 
     public static ConfigActionServices none() {
-        return new ConfigActionServices(null, null);
+        return new ConfigActionServices(null, null, Set.of());
     }
 
     public static ConfigActionServices withLogHandler(
@@ -28,7 +32,8 @@ public final class ConfigActionServices {
     ) {
         return new ConfigActionServices(
                 Objects.requireNonNull(logHandler),
-                null
+                null,
+                Set.of()
         );
     }
 
@@ -38,7 +43,16 @@ public final class ConfigActionServices {
     ) {
         return new ConfigActionServices(
                 Objects.requireNonNull(logHandler),
-                Objects.requireNonNull(quarantineService)
+                Objects.requireNonNull(quarantineService),
+                Set.of()
+        );
+    }
+
+    public ConfigActionServices withMirrorIds(Set<String> mirrorIds) {
+        return new ConfigActionServices(
+                logHandler,
+                quarantineService,
+                mirrorIds
         );
     }
 
@@ -48,5 +62,9 @@ public final class ConfigActionServices {
 
     public Optional<QuarantineService> getQuarantineService() {
         return Optional.ofNullable(quarantineService);
+    }
+
+    public Set<String> getMirrorIds() {
+        return mirrorIds;
     }
 }

@@ -250,10 +250,10 @@ class ConfigLoaderTest {
                 """);
 
         Config config = ConfigLoader.load(yaml, root);
-        String output = applyAndCapture(config.getRuleSets().get(0));
+        RuleSet ruleSet = config.getRuleSets().get(0);
 
-        assertTrue(output.contains(root.resolve("direct.txt").toString()));
-        assertFalse(output.contains(root.resolve("nested/file.txt").toString()));
+        assertTrue(ruleSet.isFileOwned(root.resolve("direct.txt")));
+        assertFalse(ruleSet.isFileOwned(root.resolve("nested/file.txt")));
     }
 
     @Test
@@ -269,9 +269,9 @@ class ConfigLoaderTest {
                 """);
 
         Config config = ConfigLoader.load(yaml, root);
-        String output = applyAndCapture(config.getRuleSets().get(0));
+        RuleSet ruleSet = config.getRuleSets().get(0);
 
-        assertTrue(output.contains(deep.toString()));
+        assertTrue(ruleSet.isFileOwned(deep));
     }
 
     @Test
@@ -286,9 +286,9 @@ class ConfigLoaderTest {
                 """);
 
         Config config = ConfigLoader.load(yaml, root);
-        String output = applyAndCapture(config.getRuleSets().get(0));
+        RuleSet ruleSet = config.getRuleSets().get(0);
 
-        assertTrue(output.isBlank());
+        assertFalse(ruleSet.isFileOwned(root.resolve("direct.txt")));
     }
 
     @Test
@@ -308,10 +308,10 @@ class ConfigLoaderTest {
                 """);
 
         Config config = ConfigLoader.load(yaml, root);
-        String parentOutput = applyAndCapture(config.getRuleSets().get(0));
+        RuleSet parentRuleSet = config.getRuleSets().get(0);
 
-        assertTrue(parentOutput.contains(visible.toString()));
-        assertFalse(parentOutput.contains(hidden.toString()));
+        assertTrue(parentRuleSet.isFileOwned(visible));
+        assertFalse(parentRuleSet.isFileOwned(hidden));
     }
 
     @Test
@@ -328,9 +328,9 @@ class ConfigLoaderTest {
                 """);
 
         Config config = ConfigLoader.load(yaml, root);
-        String output = applyAndCapture(config.getRuleSets().get(0));
+        RuleSet ruleSet = config.getRuleSets().get(0);
 
-        assertTrue(output.contains(privateFile.toString()));
+        assertTrue(ruleSet.isFileOwned(privateFile));
     }
 
     @Test
@@ -352,13 +352,13 @@ class ConfigLoaderTest {
         Config config = ConfigLoader.load(yaml, root);
         List<RuleSet> ruleSets = config.getRuleSets();
 
-        String firstOutput = applyAndCapture(ruleSets.get(0));
-        String secondOutput = applyAndCapture(ruleSets.get(1));
+        assertEquals(root.resolve("first").toAbsolutePath().normalize(), ruleSets.get(0).getRoot());
+        assertEquals(root.resolve("second").toAbsolutePath().normalize(), ruleSets.get(1).getRoot());
 
-        assertTrue(firstOutput.contains(firstFile.toString()));
-        assertFalse(firstOutput.contains(secondFile.toString()));
-        assertTrue(secondOutput.contains(secondFile.toString()));
-        assertFalse(secondOutput.contains(firstFile.toString()));
+        assertTrue(ruleSets.get(0).isFileOwned(firstFile));
+        assertFalse(ruleSets.get(0).isFileOwned(secondFile));
+        assertTrue(ruleSets.get(1).isFileOwned(secondFile));
+        assertFalse(ruleSets.get(1).isFileOwned(firstFile));
     }
 
     @Test
@@ -541,24 +541,6 @@ class ConfigLoaderTest {
         Path file = tempDir.resolve("config-" + System.nanoTime() + ".yaml");
         Files.writeString(file, yaml);
         return file;
-    }
-
-    private String applyAndCapture(RuleSet ruleSet) throws IOException {
-        final IOException[] thrown = new IOException[1];
-
-        String output = captureStdout(() -> {
-            try {
-                ruleSet.applyRules();
-            } catch (IOException e) {
-                thrown[0] = e;
-            }
-        });
-
-        if (thrown[0] != null) {
-            throw thrown[0];
-        }
-
-        return output;
     }
 
     private String captureStdout(Runnable action) {

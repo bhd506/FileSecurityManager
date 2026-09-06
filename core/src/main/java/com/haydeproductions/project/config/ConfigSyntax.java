@@ -9,7 +9,9 @@ public final class ConfigSyntax {
     public static final Set<String> ACTIONS = Set.of(
             "flag",
             "quarantine",
-            "delete"
+            "delete",
+            "allowMirror",
+            "denyMirror"
     );
 
     public static final Set<String> CUSTOM_CONDITIONS = Set.of(

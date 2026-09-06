@@ -13,6 +13,8 @@ public final class Config {
     private final OverrideRegistry overrideRegistry;
     private final List<RuleSet> ruleSets;
     private final StatusApiConfig statusApi;
+    private final RuntimeConfig runtime;
+    private final List<MirrorDefinition> mirrors;
 
     public Config(
             Path root,
@@ -23,7 +25,9 @@ public final class Config {
                 root,
                 overrideRegistry,
                 ruleSets,
-                StatusApiConfig.disabled()
+                StatusApiConfig.disabled(),
+                RuntimeConfig.defaults(),
+                List.of()
         );
     }
 
@@ -33,10 +37,32 @@ public final class Config {
             List<RuleSet> ruleSets,
             StatusApiConfig statusApi
     ) {
-        this.root = Objects.requireNonNull(root);
+        this(
+                root,
+                overrideRegistry,
+                ruleSets,
+                statusApi,
+                RuntimeConfig.defaults(),
+                List.of()
+        );
+    }
+
+    public Config(
+            Path root,
+            OverrideRegistry overrideRegistry,
+            List<RuleSet> ruleSets,
+            StatusApiConfig statusApi,
+            RuntimeConfig runtime,
+            List<MirrorDefinition> mirrors
+    ) {
+        this.root = Objects.requireNonNull(root)
+                .toAbsolutePath()
+                .normalize();
         this.overrideRegistry = Objects.requireNonNull(overrideRegistry);
-        this.ruleSets = List.copyOf(ruleSets);
+        this.ruleSets = List.copyOf(Objects.requireNonNull(ruleSets));
         this.statusApi = Objects.requireNonNull(statusApi);
+        this.runtime = Objects.requireNonNull(runtime);
+        this.mirrors = List.copyOf(Objects.requireNonNull(mirrors));
     }
 
     public Path getRoot() {
@@ -53,5 +79,13 @@ public final class Config {
 
     public StatusApiConfig getStatusApi() {
         return statusApi;
+    }
+
+    public RuntimeConfig getRuntime() {
+        return runtime;
+    }
+
+    public List<MirrorDefinition> getMirrors() {
+        return mirrors;
     }
 }

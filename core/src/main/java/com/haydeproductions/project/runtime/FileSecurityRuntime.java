@@ -3,6 +3,7 @@ package com.haydeproductions.project.runtime;
 import com.haydeproductions.project.log.LogEntry;
 import com.haydeproductions.project.log.LogEventType;
 import com.haydeproductions.project.log.LogHandler;
+import com.haydeproductions.project.mirror.MirrorManager;
 import com.haydeproductions.project.scan.FileChangedDuringScanException;
 import com.haydeproductions.project.scan.FileScanner;
 import com.haydeproductions.project.state.FileState;
@@ -31,6 +32,7 @@ public final class FileSecurityRuntime implements AutoCloseable {
     private final FileScanner fileScanner;
     private final FileStateRegistry stateRegistry;
     private final LogHandler logHandler;
+    private final MirrorManager mirrorManager;
     private final FileScanScheduler scanScheduler;
     private final SourceWatcher sourceWatcher;
     private final ExecutorService reconciliationExecutor;
@@ -52,7 +54,8 @@ public final class FileSecurityRuntime implements AutoCloseable {
                 stateRegistry,
                 logHandler,
                 DEFAULT_DEBOUNCE,
-                Math.max(1, Runtime.getRuntime().availableProcessors())
+                Math.max(1, Runtime.getRuntime().availableProcessors()),
+                MirrorManager.none()
         );
     }
 
@@ -64,10 +67,31 @@ public final class FileSecurityRuntime implements AutoCloseable {
             Duration debounce,
             int workerThreads
     ) {
+        this(
+                sourceRoot,
+                fileScanner,
+                stateRegistry,
+                logHandler,
+                debounce,
+                workerThreads,
+                MirrorManager.none()
+        );
+    }
+
+    public FileSecurityRuntime(
+            Path sourceRoot,
+            FileScanner fileScanner,
+            FileStateRegistry stateRegistry,
+            LogHandler logHandler,
+            Duration debounce,
+            int workerThreads,
+            MirrorManager mirrorManager
+    ) {
         this.sourceRoot = normalize(sourceRoot);
         this.fileScanner = Objects.requireNonNull(fileScanner);
         this.stateRegistry = Objects.requireNonNull(stateRegistry);
         this.logHandler = Objects.requireNonNull(logHandler);
+        this.mirrorManager = Objects.requireNonNull(mirrorManager);
 
         this.scanScheduler = new FileScanScheduler(
                 fileScanner::scan,
@@ -233,6 +257,11 @@ public final class FileSecurityRuntime implements AutoCloseable {
             return;
         }
 
+        if (!revokeMirrorAuthorization(normalized)) {
+            stateRegistry.setState(normalized, FileState.ERROR);
+            return;
+        }
+
         stateRegistry.setState(
                 normalized,
                 FileState.UNSCANNED
@@ -323,6 +352,8 @@ public final class FileSecurityRuntime implements AutoCloseable {
     private void handleSourceFileDeletion(Path path) {
         Path normalized = normalize(path);
 
+        revokeMirrorAuthorization(normalized);
+
         stateRegistry.getState(normalized).ifPresent(state -> {
             if (state != FileState.QUARANTINED) {
                 stateRegistry.remove(normalized);
@@ -340,6 +371,12 @@ public final class FileSecurityRuntime implements AutoCloseable {
     private void handleSourceDirectoryDeletion(Path directory) {
         Path normalizedDirectory = normalize(directory);
 
+        try {
+            mirrorManager.revokeUnder(normalizedDirectory);
+        } catch (IOException | RuntimeException exception) {
+            handleScanFailure(normalizedDirectory, exception);
+        }
+
         for (Map.Entry<Path, FileState> entry
                 : stateRegistry.snapshot().entrySet()) {
 
@@ -355,6 +392,16 @@ public final class FileSecurityRuntime implements AutoCloseable {
                 normalizedDirectory,
                 "Source directory deletion observed"
         );
+    }
+
+    private boolean revokeMirrorAuthorization(Path path) {
+        try {
+            mirrorManager.revokeAll(path);
+            return true;
+        } catch (IOException | RuntimeException exception) {
+            handleScanFailure(path, exception);
+            return false;
+        }
     }
 
     private void handleScanFailure(

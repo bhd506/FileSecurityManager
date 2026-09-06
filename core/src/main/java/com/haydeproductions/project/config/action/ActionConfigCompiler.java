@@ -8,13 +8,17 @@ import com.haydeproductions.project.config.support.ConfigNodes;
 import com.haydeproductions.project.log.LogHandler;
 import com.haydeproductions.project.quarantine.QuarantineService;
 import com.haydeproductions.project.rule.action.Action;
+import com.haydeproductions.project.rule.action.AllowMirrorAction;
 import com.haydeproductions.project.rule.action.DeleteAction;
+import com.haydeproductions.project.rule.action.DenyMirrorAction;
 import com.haydeproductions.project.rule.action.FlagAction;
 import com.haydeproductions.project.rule.action.QuarantineAction;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 public final class ActionConfigCompiler {
 
@@ -35,18 +39,15 @@ public final class ActionConfigCompiler {
             return compileNames(defaultActions, path);
         }
 
-        if (node.isTextual()) {
-            return List.of(compile(node.asText(), path));
+        if (!node.isArray()) {
+            return List.of(compileNode(node, path));
         }
 
-        ConfigNodes.requireArray(node, path);
         List<Action> actions = new ArrayList<>();
         for (int index = 0; index < node.size(); index++) {
-            JsonNode item = node.get(index);
-            String itemPath = path + "[" + index + "]";
-            actions.add(compile(
-                    ConfigNodes.requireText(item, itemPath),
-                    itemPath
+            actions.add(compileNode(
+                    node.get(index),
+                    path + "[" + index + "]"
             ));
         }
         return List.copyOf(actions);
@@ -64,10 +65,72 @@ public final class ActionConfigCompiler {
                     requireQuarantineService(path),
                     requireLogHandler(path)
             );
+            case "allowmirror", "denymirror" -> throw new ConfigException(
+                    path + " " + rawName + " requires one or more mirror ids"
+            );
             default -> throw new ConfigException(
                     path + " unsupported action: " + rawName
             );
         };
+    }
+
+    private Action compileNode(JsonNode node, String path) {
+        if (node == null || node.isNull()) {
+            throw new ConfigException(path + " action cannot be null");
+        }
+        if (node.isTextual()) {
+            return compile(node.asText(), path);
+        }
+        ConfigNodes.requireObject(node, path);
+        if (node.size() != 1) {
+            throw new ConfigException(
+                    path + " structured action must contain exactly one action name"
+            );
+        }
+
+        String rawName = node.fieldNames().next();
+        JsonNode value = node.get(rawName);
+        String name = ConfigNames.normalize(rawName);
+
+        return switch (name) {
+            case "allowmirror" -> new AllowMirrorAction(
+                    mirrorIds(value, path + "." + rawName)
+            );
+            case "denymirror" -> new DenyMirrorAction(
+                    mirrorIds(value, path + "." + rawName)
+            );
+            default -> throw new ConfigException(
+                    path + " unsupported structured action: " + rawName
+            );
+        };
+    }
+
+    private Set<String> mirrorIds(JsonNode node, String path) {
+        Set<String> ids = new LinkedHashSet<>();
+
+        if (node != null && node.isTextual()) {
+            ids.add(ConfigNodes.requireText(node, path));
+        } else {
+            ConfigNodes.requireArray(node, path);
+            if (node.isEmpty()) {
+                throw new ConfigException(path + " requires at least one mirror id");
+            }
+            for (int index = 0; index < node.size(); index++) {
+                ids.add(ConfigNodes.requireText(
+                        node.get(index),
+                        path + "[" + index + "]"
+                ));
+            }
+        }
+
+        for (String id : ids) {
+            if (!services.getMirrorIds().contains(id)) {
+                throw new ConfigException(
+                        path + " references unknown mirror id: " + id
+                );
+            }
+        }
+        return Set.copyOf(ids);
     }
 
     private List<Action> compileNames(

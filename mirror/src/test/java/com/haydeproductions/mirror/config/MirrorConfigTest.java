@@ -82,4 +82,34 @@ class MirrorConfigTest {
                 .builder(temp.resolve("source"), temp.resolve("mirror"))
                 .maxTransferAttempts(0).build());
     }
+
+    @Test
+    void sourceWatchingCanBeDisabled() {
+        MirrorConfig config = MirrorConfig
+                .builder(temp.resolve("source"), temp.resolve("mirror"))
+                .watchSourceChanges(false)
+                .build();
+
+        assertFalse(config.watchSourceChanges());
+        assertTrue(MirrorConfig
+                .builder(temp.resolve("source2"), temp.resolve("mirror2"))
+                .build()
+                .watchSourceChanges());
+    }
+
+    @Test
+    void stateFileCannotLiveInsideManagedRoots() {
+        Path source = temp.resolve("source-state");
+        Path mirror = temp.resolve("mirror-state");
+
+        assertThrows(IllegalArgumentException.class, () -> MirrorConfig
+                .builder(source, mirror)
+                .stateFile(source.resolve("state.properties"))
+                .build());
+
+        assertThrows(IllegalArgumentException.class, () -> MirrorConfig
+                .builder(source, mirror)
+                .stateFile(mirror.resolve("state.properties"))
+                .build());
+    }
 }

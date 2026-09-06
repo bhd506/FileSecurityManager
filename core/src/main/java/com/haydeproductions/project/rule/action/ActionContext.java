@@ -1,5 +1,6 @@
 package com.haydeproductions.project.rule.action;
 
+import com.haydeproductions.project.mirror.MirrorManager;
 import com.haydeproductions.project.rule.FileContext;
 import com.haydeproductions.project.state.FileStateRegistry;
 
@@ -10,6 +11,7 @@ public final class ActionContext {
 
     private final FileContext file;
     private final FileStateRegistry stateRegistry;
+    private final MirrorManager mirrorManager;
     private final Path originalPath;
     private Path currentPath;
 
@@ -17,8 +19,17 @@ public final class ActionContext {
             FileContext file,
             FileStateRegistry stateRegistry
     ) {
+        this(file, stateRegistry, MirrorManager.none());
+    }
+
+    public ActionContext(
+            FileContext file,
+            FileStateRegistry stateRegistry,
+            MirrorManager mirrorManager
+    ) {
         this.file = Objects.requireNonNull(file);
         this.stateRegistry = Objects.requireNonNull(stateRegistry);
+        this.mirrorManager = Objects.requireNonNull(mirrorManager);
         this.originalPath = normalize(file.getPath());
         this.currentPath = originalPath;
     }
@@ -29,6 +40,10 @@ public final class ActionContext {
 
     public FileStateRegistry getStateRegistry() {
         return stateRegistry;
+    }
+
+    public MirrorManager getMirrorManager() {
+        return mirrorManager;
     }
 
     public Path getOriginalPath() {

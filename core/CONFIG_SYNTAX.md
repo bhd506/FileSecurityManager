@@ -9,10 +9,24 @@ The configured filesystem root is deliberately **not** stored in this YAML. It i
 ```yaml
 version: 1
 
+runtime:
+  debounce: 150ms
+  workerThreads: 4
+
 statusApi:
   enabled: true
   host: "127.0.0.1"
   port: 8080
+
+mirrors:
+  - id: backup
+    path: backup
+    mode: sourceToMirror
+    transferMode: copy
+    conflictPolicy: fail
+    debounce: 150ms
+    maxTransferAttempts: 3
+    persistentState: false
 
 ruleSets:
   - path: "."
@@ -24,9 +38,49 @@ ruleSets:
 Fields:
 
 - `version`: optional; defaults to `1`. Any unsupported version is rejected.
+- `runtime`: optional continuous-scan scheduler settings.
 - `statusApi`: optional read-only HTTP status API configuration; defaults to disabled.
+- `mirrors`: optional list of independently configured mirror systems. Mirror destinations are resolved beneath the process-supplied mirror base root.
 - `ruleSets`: optional list; defaults to empty.
 - unknown fields are rejected.
+
+## Runtime
+
+```yaml
+runtime:
+  debounce: 150ms
+  workerThreads: 4
+```
+
+- `debounce`: optional duration; defaults to `150ms`. Repeated change events for the same path are coalesced before scanning.
+- `workerThreads`: optional positive integer; defaults to the available processor count. Different files may scan concurrently, while the same path is serialized.
+
+## Mirrors
+
+Mirrors are configured independently from RuleSets. Merely defining a mirror does **not** authorize any file to use it; every source file starts unauthorized and must receive an `allowMirror` action from a successful scan.
+
+```yaml
+mirrors:
+  - id: backup
+    path: backup
+    mode: sourceToMirror
+    transferMode: copy
+    conflictPolicy: fail
+    debounce: 150ms
+    maxTransferAttempts: 3
+    persistentState: false
+```
+
+- `id`: required stable identifier, 1-64 characters, beginning with a letter and then letters, digits, `.`, `_`, or `-`. IDs are unique ignoring case.
+- `path`: required path relative to the process-supplied mirror base root. It may not escape that root. Configured mirror destination roots may not overlap one another.
+- `mode`: optional; defaults to `oneTime`. Supported: `oneTime`, `sourceToMirror`, `mirrorToSource`, `bidirectional`.
+- `transferMode`: optional; defaults to `copy`. `move` is only valid with `oneTime`.
+- `conflictPolicy`: optional; defaults to `fail`. Supported: `fail`, `sourceWins`, `mirrorWins`.
+- `debounce`: optional; defaults to `150ms`.
+- `maxTransferAttempts`: optional positive integer; defaults to `3`.
+- `persistentState`: optional. Defaults to `true` for bidirectional mirrors and `false` otherwise. Persistent state is stored beneath the runtime log root, outside both source and mirror trees.
+
+When used by the security core, mirror source-side watch propagation is deliberately disabled. A modified source file therefore cannot be copied using authorization granted to its previous version. The core revokes authorization as soon as it observes the change, rescans the file, and an `allowMirror` action re-enables/reconciles it only if the new version qualifies. Mirror-side changes remain observable, and changes written back into the source tree are scanned normally.
 
 ## Status API
 
@@ -67,7 +121,7 @@ A rule entry must contain exactly one of `custom` or `predefined`.
 
 # Actions
 
-Current action names:
+Current simple action names:
 
 ```yaml
 flag
@@ -75,7 +129,17 @@ quarantine
 delete
 ```
 
-Action lists preserve configuration order, but runtime execution still obeys the global action phase ordering defined by the core (`FLAG -> QUARANTINE -> DELETE`, with later phases added separately).
+Mirror authorization actions are structured because they must name one or more configured mirror IDs:
+
+```yaml
+onMatch:
+  - allowMirror: backup
+  - denyMirror: [archive, secondary]
+```
+
+`allowMirror` and `denyMirror` validate their mirror IDs while configuration is compiled. Mirror actions execute in the `MIRROR` phase after flag/quarantine/delete. An `allowMirror` is skipped if the scanned file was quarantined or deleted earlier in the same action sequence.
+
+Action lists preserve configuration order within a phase, but runtime execution obeys the global action phase ordering `FLAG -> QUARANTINE -> DELETE -> MIRROR`.
 
 `delete` requires a configured `LogHandler` at load/compile time.
 

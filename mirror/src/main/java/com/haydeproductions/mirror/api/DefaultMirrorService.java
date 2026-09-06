@@ -77,6 +77,8 @@ final class DefaultMirrorService implements MirrorService {
                 config.sourceRoot(),
                 config.mirrorRoot(),
                 config.debounce(),
+                config.watchSourceChanges(),
+                true,
                 this::handleEvent,
                 this::handleOverflow,
                 errorHandler
@@ -113,6 +115,12 @@ final class DefaultMirrorService implements MirrorService {
         Path relative = mapper.toRelativeSource(sourceFile);
         targetRegistry.remove(relative);
         syncStateStore.remove(relative);
+    }
+
+    @Override
+    public void suspendTarget(Path sourceFile) throws IOException {
+        Path relative = mapper.toRelativeSource(sourceFile);
+        targetRegistry.remove(relative);
     }
 
     @Override
@@ -163,7 +171,7 @@ final class DefaultMirrorService implements MirrorService {
         for (Path target : targetRegistry.affectedBy(event.relativePath())) {
             try {
                 engine.reconcile(target, event.side());
-            } catch (Throwable error) {
+            } catch (Exception error) {
                 errorHandler.onError(error);
             }
         }
@@ -172,7 +180,7 @@ final class DefaultMirrorService implements MirrorService {
     private void handleOverflow(MirrorSide side) {
         try {
             engine.reconcileAll(side);
-        } catch (Throwable error) {
+        } catch (Exception error) {
             errorHandler.onError(error);
         }
     }
