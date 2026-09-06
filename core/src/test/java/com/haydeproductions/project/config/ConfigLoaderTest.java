@@ -377,6 +377,53 @@ class ConfigLoaderTest {
         assertThrows(IOException.class, () -> ConfigLoader.load(missing, root));
     }
 
+
+    @Test
+    void ruleSetPathCannotEscapeConfiguredRoot() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                ruleSets:
+                  - path: "../outside"
+                """);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ConfigLoader.load(yaml, root)
+        );
+    }
+
+    @Test
+    void deeplyNestedTraversalCannotEscapeConfiguredRoot() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                ruleSets:
+                  - path: "safe/../../outside"
+                """);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ConfigLoader.load(yaml, root)
+        );
+    }
+
+    @Test
+    void normalizedRuleSetPathThatRemainsInsideRootIsAllowed() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                ruleSets:
+                  - path: "safe/../inside"
+                    override: true
+                """);
+
+        Config config = ConfigLoader.load(yaml, root);
+
+        assertTrue(
+                config.getOverrides().isOverride(
+                        root.resolve("inside")
+                )
+        );
+    }
+
     private Path createRoot() throws IOException {
         Path root = tempDir.resolve("data");
         Files.createDirectories(root);

@@ -1,11 +1,27 @@
+version: 1
+
 ruleSets:
   - path: "."
-    maxDepth: 2
     override: false
 
-  - path: "private"
-    override: true
+    rules:
+      - predefined:
+          type: blockExtensions
+          extensions: [exe, dll, bat, ps1]
+          onMatch: [flag, quarantine]
 
-  - path: "private/uploads"
-    maxDepth: 1
-    override: false
+      - custom:
+          condition:
+            and:
+              - extension:
+                  values: [jpg, jpeg]
+              - not:
+                  fileSignature:
+                    values: [JPEG]
+
+          onMatch: [flag, quarantine]
+
+      - predefined:
+          type: maxFileSize
+          max: 10MiB
+          onMatch: flag

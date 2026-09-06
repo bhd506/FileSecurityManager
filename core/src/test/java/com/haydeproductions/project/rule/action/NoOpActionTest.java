@@ -1,24 +1,40 @@
 package com.haydeproductions.project.rule.action;
 
-import com.haydeproductions.project.rule.FileContext;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.*;
 
 class NoOpActionTest {
 
     @Test
-    void executesWithoutChangingContractOrThrowing() {
-        NoOpAction action = new NoOpAction();
+    void defaultPhaseIsFlag() {
+        NoOpAction action =
+                new NoOpAction();
 
-        ActionContext context = new ActionContext(
-                new FileContext(Path.of("file.txt"))
+        assertEquals(
+                ActionPhase.FLAG,
+                action.getPhase()
         );
+    }
 
-        assertDoesNotThrow(
-                () -> action.execute(context)
+    @Test
+    void acceptsExplicitPhase() {
+        NoOpAction action =
+                new NoOpAction(
+                        ActionPhase.DELETE
+                );
+
+        assertEquals(
+                ActionPhase.DELETE,
+                action.getPhase()
+        );
+    }
+
+    @Test
+    void rejectsNullPhase() {
+        assertThrows(
+                NullPointerException.class,
+                () -> new NoOpAction(null)
         );
     }
 }

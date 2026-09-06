@@ -1,7 +1,10 @@
 package com.haydeproductions.project.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.haydeproductions.project.rule.Rule;
 import com.haydeproductions.project.scope.OverrideRegistry;
 import com.haydeproductions.project.scope.RuleSet;
 
@@ -10,52 +13,95 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public final class ConfigLoader {
 
     private static final ObjectMapper OBJECT_MAPPER =
-            new ObjectMapper(new YAMLFactory());
+            new ObjectMapper(new YAMLFactory())
+                    .configure(
+                            DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                            true
+                    );
 
     private ConfigLoader() {
     }
 
-    public static Config load(Path configPath, Path root) throws IOException {
+    public static Config load(Path configPath, Path root)
+            throws IOException {
+        return load(
+                configPath,
+                root,
+                ConfigActionServices.none()
+        );
+    }
+
+    public static Config load(
+            Path configPath,
+            Path root,
+            ConfigActionServices actionServices
+    ) throws IOException {
+
+        Objects.requireNonNull(configPath);
+        Objects.requireNonNull(root);
+        Objects.requireNonNull(actionServices);
 
         RawConfig rawConfig = OBJECT_MAPPER.readValue(
                 configPath.toFile(),
                 RawConfig.class
         );
 
-        root = root.toAbsolutePath().normalize();
+        if (rawConfig == null) {
+            rawConfig = new RawConfig();
+        }
+
+        validateVersion(rawConfig.version);
+
+        Path normalizedRoot = root
+                .toAbsolutePath()
+                .normalize();
 
         Set<Path> overridePaths = createOverridePaths(
-                root,
+                normalizedRoot,
                 rawConfig.ruleSets
         );
 
         OverrideRegistry overrideRegistry =
                 new OverrideRegistry(overridePaths);
 
+        RuleConfigCompiler ruleCompiler =
+                new RuleConfigCompiler(
+                        normalizedRoot,
+                        actionServices
+                );
+
         List<RuleSet> ruleSets = createRuleSets(
-                root,
+                normalizedRoot,
                 overrideRegistry,
-                rawConfig.ruleSets
+                rawConfig.ruleSets,
+                ruleCompiler
         );
 
-        /*
-         * Later:
-         *
-         * - Load configured Rule definitions
-         * - Construct Rule objects
-         * - Assign Rules to RuleSets
-         */
-
         return new Config(
-                root,
+                normalizedRoot,
                 overrideRegistry,
                 ruleSets
         );
+    }
+
+    private static void validateVersion(Integer version) {
+        int effectiveVersion = version == null
+                ? ConfigSyntax.CURRENT_VERSION
+                : version;
+
+        if (effectiveVersion != ConfigSyntax.CURRENT_VERSION) {
+            throw new ConfigException(
+                    "Unsupported config version " + effectiveVersion
+                            + "; supported version is "
+                            + ConfigSyntax.CURRENT_VERSION
+            );
+        }
     }
 
     private static Set<Path> createOverridePaths(
@@ -69,7 +115,11 @@ public final class ConfigLoader {
             return overridePaths;
         }
 
-        for (RuleSetConfig config : configs) {
+        for (int index = 0; index < configs.size(); index++) {
+            RuleSetConfig config = requireRuleSetConfig(
+                    configs.get(index),
+                    index
+            );
 
             if (!config.override) {
                 continue;
@@ -89,7 +139,8 @@ public final class ConfigLoader {
     private static List<RuleSet> createRuleSets(
             Path root,
             OverrideRegistry overrideRegistry,
-            List<RuleSetConfig> configs
+            List<RuleSetConfig> configs,
+            RuleConfigCompiler ruleCompiler
     ) {
 
         List<RuleSet> ruleSets = new ArrayList<>();
@@ -98,7 +149,11 @@ public final class ConfigLoader {
             return ruleSets;
         }
 
-        for (RuleSetConfig config : configs) {
+        for (int index = 0; index < configs.size(); index++) {
+            RuleSetConfig config = requireRuleSetConfig(
+                    configs.get(index),
+                    index
+            );
 
             Path ruleSetRoot = resolveRuleSetRoot(
                     root,
@@ -115,10 +170,36 @@ public final class ConfigLoader {
                 builder.maxDepth(config.maxDepth);
             }
 
+            if (config.rules != null) {
+                for (int ruleIndex = 0;
+                     ruleIndex < config.rules.size();
+                     ruleIndex++) {
+
+                    Rule rule = ruleCompiler.compile(
+                            config.rules.get(ruleIndex),
+                            "ruleSets[" + index + "].rules["
+                                    + ruleIndex + "]"
+                    );
+                    builder.rule(rule);
+                }
+            }
+
             ruleSets.add(builder.build());
         }
 
-        return ruleSets;
+        return List.copyOf(ruleSets);
+    }
+
+    private static RuleSetConfig requireRuleSetConfig(
+            RuleSetConfig config,
+            int index
+    ) {
+        if (config == null) {
+            throw new ConfigException(
+                    "ruleSets[" + index + "] cannot be null"
+            );
+        }
+        return config;
     }
 
     private static Path resolveRuleSetRoot(
@@ -131,12 +212,31 @@ public final class ConfigLoader {
                         ? "."
                         : path;
 
-        return root
-                .resolve(relativePath)
+        Path configuredPath = Path.of(relativePath);
+
+        if (configuredPath.isAbsolute()) {
+            throw new ConfigException(
+                    "RuleSet path must be relative to the configured root: "
+                            + relativePath
+            );
+        }
+
+        Path resolved = root
+                .resolve(configuredPath)
                 .normalize();
+
+        if (!resolved.startsWith(root)) {
+            throw new ConfigException(
+                    "RuleSet path escapes the configured root: "
+                            + relativePath
+            );
+        }
+
+        return resolved;
     }
 
     private static class RawConfig {
+        public Integer version;
         public List<RuleSetConfig> ruleSets;
     }
 
@@ -144,11 +244,6 @@ public final class ConfigLoader {
         public String path;
         public Integer maxDepth;
         public boolean override;
-
-        /*
-         * Later:
-         *
-         * public List<String> rules;
-         */
+        public List<JsonNode> rules;
     }
 }

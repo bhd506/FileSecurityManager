@@ -1,0 +1,14 @@
+package com.haydeproductions.project.log;
+
+public enum LogEventType {
+    QUARANTINE_SUCCESS,
+    QUARANTINE_SKIPPED_MISSING,
+    QUARANTINE_FAILED,
+    DELETE_SUCCESS,
+    DELETE_SKIPPED_MISSING,
+    DELETE_FAILED,
+    SCAN_FAILED,
+    WATCH_OVERFLOW,
+    WATCHER_FAILED,
+    SOURCE_DELETE_OBSERVED
+}
