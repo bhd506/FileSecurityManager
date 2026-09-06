@@ -83,11 +83,46 @@ public final class ConfigLoader {
                 ruleCompiler
         );
 
+        StatusApiConfig statusApi = createStatusApiConfig(
+                rawConfig.statusApi
+        );
+
         return new Config(
                 normalizedRoot,
                 overrideRegistry,
-                ruleSets
+                ruleSets,
+                statusApi
         );
+    }
+
+
+    private static StatusApiConfig createStatusApiConfig(
+            StatusApiRawConfig raw
+    ) {
+        if (raw == null) {
+            return StatusApiConfig.disabled();
+        }
+
+        String host = raw.host == null
+                ? StatusApiConfig.DEFAULT_HOST
+                : raw.host;
+
+        int port = raw.port == null
+                ? StatusApiConfig.DEFAULT_PORT
+                : raw.port;
+
+        try {
+            return new StatusApiConfig(
+                    raw.enabled,
+                    host,
+                    port
+            );
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException(
+                    exception.getMessage(),
+                    exception
+            );
+        }
     }
 
     private static void validateVersion(Integer version) {
@@ -238,6 +273,13 @@ public final class ConfigLoader {
     private static class RawConfig {
         public Integer version;
         public List<RuleSetConfig> ruleSets;
+        public StatusApiRawConfig statusApi;
+    }
+
+    private static class StatusApiRawConfig {
+        public boolean enabled;
+        public String host;
+        public Integer port;
     }
 
     private static class RuleSetConfig {

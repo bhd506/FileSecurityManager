@@ -424,6 +424,113 @@ class ConfigLoaderTest {
         );
     }
 
+
+    @Test
+    void statusApiDefaultsToDisabled() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("{}\n");
+
+        Config config = ConfigLoader.load(yaml, root);
+
+        assertEquals(
+                StatusApiConfig.disabled(),
+                config.getStatusApi()
+        );
+    }
+
+    @Test
+    void loadsEnabledStatusApiConfiguration() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                  host: "0.0.0.0"
+                  port: 9090
+                """);
+
+        Config config = ConfigLoader.load(yaml, root);
+
+        assertEquals(
+                new StatusApiConfig(true, "0.0.0.0", 9090),
+                config.getStatusApi()
+        );
+    }
+
+    @Test
+    void statusApiUsesDefaultHostAndPortWhenOmitted() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                """);
+
+        Config config = ConfigLoader.load(yaml, root);
+
+        assertEquals(
+                new StatusApiConfig(true, "127.0.0.1", 8080),
+                config.getStatusApi()
+        );
+    }
+
+    @Test
+    void statusApiAllowsEphemeralPortZero() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                  port: 0
+                """);
+
+        Config config = ConfigLoader.load(yaml, root);
+
+        assertEquals(0, config.getStatusApi().port());
+    }
+
+    @Test
+    void statusApiRejectsBlankHost() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                  host: " "
+                """);
+
+        assertThrows(
+                ConfigException.class,
+                () -> ConfigLoader.load(yaml, root)
+        );
+    }
+
+    @Test
+    void statusApiRejectsInvalidPort() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                  port: 70000
+                """);
+
+        assertThrows(
+                ConfigException.class,
+                () -> ConfigLoader.load(yaml, root)
+        );
+    }
+
+    @Test
+    void unknownStatusApiFieldIsRejected() throws IOException {
+        Path root = createRoot();
+        Path yaml = writeYaml("""
+                statusApi:
+                  enabled: true
+                  unknown: true
+                """);
+
+        assertThrows(
+                IOException.class,
+                () -> ConfigLoader.load(yaml, root)
+        );
+    }
+
     private Path createRoot() throws IOException {
         Path root = tempDir.resolve("data");
         Files.createDirectories(root);

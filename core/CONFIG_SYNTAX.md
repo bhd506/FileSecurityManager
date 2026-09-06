@@ -9,6 +9,11 @@ The configured filesystem root is deliberately **not** stored in this YAML. It i
 ```yaml
 version: 1
 
+statusApi:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8080
+
 ruleSets:
   - path: "."
     maxDepth: 3
@@ -19,8 +24,27 @@ ruleSets:
 Fields:
 
 - `version`: optional; defaults to `1`. Any unsupported version is rejected.
+- `statusApi`: optional read-only HTTP status API configuration; defaults to disabled.
 - `ruleSets`: optional list; defaults to empty.
 - unknown fields are rejected.
+
+## Status API
+
+```yaml
+statusApi:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8080
+```
+
+- `enabled`: optional boolean; defaults to `false`.
+- `host`: optional; defaults to `127.0.0.1`. Use `0.0.0.0` when the API must be reachable from outside the container/host network namespace.
+- `port`: optional integer from `0` through `65535`; defaults to `8080`. Port `0` asks the operating system to choose an available port and is mainly useful for development/tests.
+- the API is read-only. It cannot set file state.
+- source paths are supplied to the API relative to the configured source root and path traversal outside that root is rejected.
+- there is currently no authentication layer, so binding to loopback is the safe default.
+
+See `STATUS_API.md` for the HTTP contract.
 
 ## RuleSet
 
